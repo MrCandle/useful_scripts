@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+## For this script to work you need:
+##  1) Azure CLI installed and logged in.
+##  2) Configure the following variables:
+    export RESOURCE_GROUP=''
+    export SERVER_NAME=''
+    export DB_NAME=''
+    export DB_USER=''
+    export DB_PASSWORD=''
+## End of Require variables
+
+## Variables for internal use only. DON'T CHANGE
+export SERVER_URI="$SERVER_NAME.database.windows.net"
+export BACKUP_DB_NAME="$DB_NAME-old"
+
+echo "Creating fix-collation-tmp folder"
+mkdir fix-collation-tmp
+cd fix-collation-tmp
+
+# Rename DB to store
+echo "Renaming $DB_NAME to $BACKUP_DB_NAME, using Resource Group: $RESOURCE_GROUP and Server Name: $SERVER_NAME."
+az sql db rename --new-name $BACKUP_DB_NAME --name $DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP
+
+# Download sqlpackage, unzip it and make it ready to be usable
+echo "Downloading sqlpackage for macOS"
+curl https://go.microsoft.com/fwlink/?linkid=2087247 -L -o sqlpackage.zip
+unzip -o sqlpackage.zip -d sqlpackage
+chmod a+x sqlpackage/sqlpackage
+
+# Export Database
+echo "Exporting database from: $BACKUP_DB_NAME"
+./sqlpackage/sqlpackage /Action:Export /ssn:tcp:$SERVER_URI,1433 /sdn:$BACKUP_DB_NAME /su:$DB_USER /sp:$DB_PASSWORD /tf:export.bacpac
+
+# Unzip file
+unzip -o export.bacpac -d exported
+
+# Change permission to copy model.xml 
+chmod -R 755 exported/model.xml
+
+# Copy model.xml
+cp exported/model.xml .
+
+# Delete unzipped bacpac
+rm -rf exported
+
+# Replace Collation in model.xml
+echo "Replacing 'SQL_Latin1_General_CP1_CI_AS' for 'SQL_Latin1_General_CP1_CS_AS'"
+sed -i "" 's/SQL_Latin1_General_CP1_CI_AS/SQL_Latin1_General_CP1_CS_AS/g' model.xml
+
+#Importing Database
+echo "Importing database to a new database called: $DB_NAME"
+./sqlpackage/sqlpackage /Action:Import /tsn:tcp:$SERVER_URI,1433 /tdn:$DB_NAME /tu:$DB_USER /tp:$DB_PASSWORD /sf:export.bacpac /ModelFilePath:model.xml
+
+ 
