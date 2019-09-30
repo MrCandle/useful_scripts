@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 
+
 ## For this script to work you need:
-##  1) Azure CLI installed and logged in.
-##  2) Configure the following variables:
+## 1) Azure CLI installed and logged in.
+## 2) Configure the following variables:
     export RESOURCE_GROUP=''
     export SERVER_NAME=''
     export DB_NAME=''
     export DB_USER=''
     export DB_PASSWORD=''
-## End of Require variables
+    export SUBSCRIPTION_NAME=''
+## End of Required variables
 
 ## Variables for internal use only. DON'T CHANGE
 export SERVER_URI="$SERVER_NAME.database.windows.net"
 export BACKUP_DB_NAME="$DB_NAME-old"
+export TMP_DB_NAME="$DB_NAME-tmp"
 
 echo "Creating fix-collation-tmp folder"
 mkdir fix-collation-tmp
 cd fix-collation-tmp
 
-# Rename DB to store
-echo "Renaming $DB_NAME to $BACKUP_DB_NAME, using Resource Group: $RESOURCE_GROUP and Server Name: $SERVER_NAME."
-az sql db rename --new-name $BACKUP_DB_NAME --name $DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP
+# Rename Database for backup
+echo "Renaming $DB_NAME to $BACKUP_DB_NAME, using Resource Group: $RESOURCE_GROUP, Server Name: $SERVER_NAME and Subscription Name: $SUBSCRIPTION_NAME"
+az sql db rename --new-name $BACKUP_DB_NAME --name $DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP  --subscription $SUBSCRIPTION_NAME
 
 # Download sqlpackage, unzip it and make it ready to be usable
 echo "Downloading sqlpackage for macOS"
@@ -35,7 +38,7 @@ echo "Exporting database from: $BACKUP_DB_NAME"
 # Unzip file
 unzip -o export.bacpac -d exported
 
-# Change permission to copy model.xml 
+# Change permission to copy model.xml
 chmod -R 755 exported/model.xml
 
 # Copy model.xml
@@ -48,8 +51,10 @@ rm -rf exported
 echo "Replacing 'SQL_Latin1_General_CP1_CI_AS' for 'SQL_Latin1_General_CP1_CS_AS'"
 sed -i "" 's/SQL_Latin1_General_CP1_CI_AS/SQL_Latin1_General_CP1_CS_AS/g' model.xml
 
-#Importing Database
-echo "Importing database to a new database called: $DB_NAME with a maximum size of 250Gb"
-./sqlpackage/sqlpackage /Action:Import /tsn:tcp:$SERVER_URI,1433 /tdn:$DB_NAME /tu:$DB_USER /tp:$DB_PASSWORD /sf:export.bacpac /ModelFilePath:model.xml /p:DatabaseMaximumSize=250
+# Importing Database
+echo "Importing database to a new database called: $TMP_DB_NAME with a maximum size of 250Gb"
+./sqlpackage/sqlpackage /Action:Import /tsn:tcp:$SERVER_URI,1433 /tdn:$TMP_DB_NAME /tu:$DB_USER /tp:$DB_PASSWORD /sf:export.bacpac /ModelFilePath:model.xml /p:DatabaseMaximumSize=250
 
- 
+# Renaming database
+echo "Renaming $TMP_DB_NAME to $DB_NAME"
+az sql db rename --new-name $DB_NAME --name $TMP_DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP  --subscription $SUBSCRIPTION_NAME
