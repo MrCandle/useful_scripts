@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+
+## For this script to work you need:
+## 1) Azure CLI installed and logged in.
+## 2) Configure the following variables:
+    export RESOURCE_GROUP=''
+    export SERVER_NAME=''
+    export DB_NAME=''
+    export DB_USER=''
+    export DB_PASSWORD=''
+    export SUBSCRIPTION_NAME=''
+    export BACKUP_DB_NAME="" ## This is the name the Original DB Back Up will have after being restored
+    export RESTORE_DB_NAME="" ## This is the name of the Restore DB created in the previous steps
+## End of Required variables
+
+## Variables for internal use only. DON'T CHANGE
+export SERVER_URI="$SERVER_NAME.database.windows.net"
+
+# Rename Database for backup
+echo "Renaming $DB_NAME to $BACKUP_DB_NAME, using Resource Group: $RESOURCE_GROUP, Server Name: $SERVER_NAME and Subscription Name: $SUBSCRIPTION_NAME"
+az sql db rename --new-name $BACKUP_DB_NAME --name $DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP --subscription $SUBSCRIPTION_NAME
+
+# Renaming database
+echo "Renaming $RESTORE_DB_NAME to $DB_NAME"
+az sql db rename --new-name $DB_NAME --name $RESTORE_DB_NAME --server $SERVER_NAME --resource-group $RESOURCE_GROUP --subscription $SUBSCRIPTION_NAME

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -e
+
+#DATABRICKS_API_TOKEN=<token>
+#REGION=<region>
+#NOTEBOOKS_FOLDER=<folder_path>
+#BUILD_NUMBER=<expected_build>
+
+content_type_header='Content-Type: application/json'
+authorization_header="Authorization: Bearer $DATABRICKS_API_TOKEN"
+databricks_api_url="https://$REGION.azuredatabricks.net/api/2.0"
+notebooks_src_dir=$NOTEBOOKS_FOLDER
+expected_build_number=$BUILD_NUMBER
+errors=()
+
+check_build_number() {
+    notebook_path=$1
+    notebook_content=$2
+
+    echo "Validating $notebook_path"
+    deployed_build_number=$(echo $notebook_content | grep -oP 'Build: \K\d+' | tail -1)
+    
+    echo "Deployed build: $deployed_build_number"
+    echo "Expected build: $expected_build_number"
+    
+    if [[ $deployed_build_number == $expected_build_number ]]; then
+        echo "Notebook deployed correctly"
+    else
+        echo "Deployment failed for this notebook"
+        errors+=( "$notebook_path - failed. Deployed build: $deployed_build_number" )
+    fi
+    
+}
+
+echo "Querying Notebooks at $databricks_api_url/workspace/list?path=$notebooks_src_dir"
+res=$(curl -s -G -n -H "$content_type_header" -H "$authorization_header" $databricks_api_url/workspace/list?path=$notebooks_src_dir)
+
+workspace_paths=$(jq -r '.objects | .[].path | tostring' <<< $res)
+
+for notebook_path in $workspace_paths; do
+    echo "Exporting $notebook_path"
+    notebook="$(curl -s -G -n -H "$content_type_header" -H "$authorization_header" "$databricks_api_url/workspace/export?path=$notebook_path&direct_download=true")"
+
+    # Test only. Will be removed when the deployed files really have the build_number
+    #test=$(sed "1 i\ # Build: $expected_build_number" <<< $notebook)
+    #check_build_number $notebook_path "$test"
+    
+    check_build_number $notebook_path "$notebook"
+done
+
+if [ ${#errors[@]} -eq 0 ]; then
+    echo "Everything was deployed correctly"
+    exit 0
+else
+    echo "Some files were not deployed correctly"
+    echo ${errors[*]}
+    exit 1
+fi
