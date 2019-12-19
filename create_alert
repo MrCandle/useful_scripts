@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+
+
+resource_id=$(az resource show --name "" --resource-group "" --resource-type ""  | jq -r .id)
+
+#az monitor action-group show --name "" --resource-group ""
+
+az monitor metrics alert create --condition "avg DeadletteredMessages > 300" \
+                                --description "Alert for monitoring dead-lettered messages. The threshold is 300 every six hours." \
+                                --name "Dead-letter alert above 300" \
+                                --resource-group "" \
+                                --scopes $resource_id \
+                                --action "" \
+                                --severity 2 \
+                                --window-size 6h \
+                                --evaluation-frequency 15m
